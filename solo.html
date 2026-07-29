@@ -25,6 +25,8 @@
   .explain { background: #150c1e; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 0.92rem; color: var(--muted); }
   button { width: 100%; font-family: inherit; font-weight: 700; font-size: 1.05rem; border: none; border-radius: 12px; padding: 14px; cursor: pointer; background: linear-gradient(135deg, var(--gold), var(--amber)); color: #2a1400; margin-top: 8px; }
   .score-badge { position: fixed; top: 10px; left: 10px; background: var(--panel); border: 1px solid var(--gold); border-radius: 20px; padding: 6px 14px; font-weight: 700; }
+  .mountain-view { position: relative; width: 100%; height: 320px; border-radius: 16px; overflow: hidden; border: 2px solid var(--gold); background: #1a1024 url('images/mountain-bg.png') center / cover no-repeat; margin-bottom: 4px; }
+  .mini-pawn { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: var(--gold); display: flex; align-items: center; justify-content: center; font-size: 16px; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.5); transform: translate(-50%, -50%); transition: top 0.7s ease, left 0.7s ease; }
   .freeze { position: fixed; inset: 0; background: rgba(120,20,20,0.92); z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
   .mistakes li { margin-bottom: 10px; }
   .hidden { display: none !important; }
@@ -40,6 +42,9 @@
   </div>
 
   <div id="gameScreen" class="hidden">
+    <div class="mountain-view" id="mountainView">
+      <div class="mini-pawn" id="miniPawn">🧗</div>
+    </div>
     <div class="progress" id="progressText"></div>
     <div id="checkpointCard" class="card hidden">
       <p id="checkpointInfo"></p>
@@ -137,12 +142,23 @@ function showFreeze(ev) {
   }, 1000);
 }
 
+function updatePawnPosition() {
+  const total = Object.keys(window.gameData.waypoints).length;
+  const stationIndex = Math.max(1, Math.min(state.pos || 1, total));
+  const station = window.gameData.waypoints[stationIndex];
+  if (!station) return;
+  const pawn = document.getElementById('miniPawn');
+  pawn.style.top = station.top + '%';
+  pawn.style.left = station.left + '%';
+}
+
 function renderCurrentWaypoint() {
   clearInterval(quizTimer);
   document.getElementById('checkpointCard').classList.add('hidden');
   document.getElementById('quizCard').classList.add('hidden');
   document.getElementById('finishCard').classList.add('hidden');
   document.getElementById('scoreBadge').innerText = '⭐ ' + state.score + ' נק\'';
+  updatePawnPosition();
 
   const total = Object.keys(window.gameData.waypoints).length;
   if (state.pos >= total) {
