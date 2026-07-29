@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>טיפוס פירמידה - תרגול אישי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1a1024; --panel: #241533; --gold: #ffb545; --amber: #ff8a3d;
+    --text: #fff6e8; --muted: #b8a4c0; --good: #3ecf6e; --bad: #ff5c5c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; font-family: 'Rubik', sans-serif; background: var(--bg) url('images/mountain-bg.png') center bottom / cover no-repeat fixed; color: var(--text); padding: 16px; }
+  .wrap { max-width: 480px; margin: 0 auto; }
+  h1 { font-weight: 900; font-size: 1.4rem; color: var(--gold); text-align: center; margin: 10px 0 4px; text-shadow: 0 2px 8px #000; }
+  .card { background: rgba(26,16,36,0.94); border: 2px solid var(--gold); border-radius: 16px; padding: 20px; margin-top: 14px; }
+  .progress { text-align: center; color: var(--muted); margin-bottom: 6px; font-size: 0.9rem; }
+  .barwrap { background: #150c1e; border-radius: 8px; height: 8px; overflow: hidden; margin-bottom: 14px; }
+  .bar { height: 100%; background: linear-gradient(90deg, var(--gold), var(--amber)); transition: width 0.1s linear; }
+  .opt { display: block; width: 100%; text-align: right; background: #150c1e; border: 2px solid var(--muted); color: var(--text); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; cursor: pointer; font-family: inherit; font-size: 1rem; }
+  .opt.correct { border-color: var(--good); background: rgba(62,207,110,0.15); }
+  .opt.wrong { border-color: var(--bad); background: rgba(255,92,92,0.15); }
+  .explain { background: #150c1e; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 0.92rem; color: var(--muted); }
+  button { width: 100%; font-family: inherit; font-weight: 700; font-size: 1.05rem; border: none; border-radius: 12px; padding: 14px; cursor: pointer; background: linear-gradient(135deg, var(--gold), var(--amber)); color: #2a1400; margin-top: 8px; }
+  .score-badge { position: fixed; top: 10px; left: 10px; background: var(--panel); border: 1px solid var(--gold); border-radius: 20px; padding: 6px 14px; font-weight: 700; }
+  .freeze { position: fixed; inset: 0; background: rgba(120,20,20,0.92); z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  .mistakes li { margin-bottom: 10px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏔️ טיפוס פירמידה - תרגול אישי</h1>
+
+  <div id="startScreen" class="card">
+    <p>מטפסים לבד על ההר, בקצב שלכם. עונים נכון כדי להתקדם, מקבלים יותר נקודות ככל שעונים מהר יותר.</p>
+    <button onclick="startSolo()">התחילו טיפוס</button>
+  </div>
+
+  <div id="gameScreen" class="hidden">
+    <div class="progress" id="progressText"></div>
+    <div id="checkpointCard" class="card hidden">
+      <p id="checkpointInfo"></p>
+      <button onclick="advanceCheckpoint()">המשך בטיפוס</button>
+    </div>
+    <div id="quizCard" class="card hidden">
+      <div class="barwrap"><div class="bar" id="timeBar" style="width:100%;"></div></div>
+      <p id="quizQuestion" style="font-weight:700; font-size:1.05rem;"></p>
+      <div id="optionsList"></div>
+      <div id="explainBox" class="explain hidden"></div>
+      <button id="nextBtn" class="hidden" onclick="renderCurrentWaypoint()">המשיכו</button>
+    </div>
+    <div id="finishCard" class="card hidden">
+      <h1>🏔️ הגעתם לפסגה!</h1>
+      <p id="finishScore" style="font-size:1.2rem; font-weight:700;"></p>
+      <div id="mistakesBox">
+        <h3>כדאי לחזור על:</h3>
+        <ol class="mistakes" id="mistakesList"></ol>
+      </div>
+      <button onclick="resetSolo()">טיפוס חדש</button>
+    </div>
+  </div>
+</div>
+
+<div class="score-badge" id="scoreBadge" style="display:none;"></div>
+<div class="freeze hidden" id="freezeOverlay">
+  <h2 id="freezeText"></h2>
+  <p id="freezeCountdown"></p>
+</div>
+
+<script src="js/gameData.js"></script>
+<script>
+const STORAGE_KEY = 'piramida_solo_progress';
+let quizTimer = null;
+let answerShownAt = null;
+let answered = false;
+let eventTimer = null;
+
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (s && typeof s.pos === 'number') return s;
+  } catch (e) {}
+  return null;
+}
+function save(state) { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+let state = load();
+
+function startSolo() {
+  state = { pos: 1, score: 0, mistakes: [] };
+  save(state);
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  document.getElementById('scoreBadge').style.display = 'block';
+  scheduleRandomEvent();
+  renderCurrentWaypoint();
+}
+
+// אם יש state שמור, מציעים להמשיך
+if (state) {
+  document.getElementById('startScreen').innerHTML =
+    '<p>נמצא טיפוס בעיצומו (תחנה ' + state.pos + ', ' + state.score + ' נק\').</p>' +
+    '<button onclick="resumeSolo()">המשך טיפוס</button>' +
+    '<button onclick="startSolo()" style="background:transparent;border:2px solid var(--muted);color:var(--muted);margin-top:8px;">התחלה מחדש</button>';
+}
+function resumeSolo() {
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  document.getElementById('scoreBadge').style.display = 'block';
+  scheduleRandomEvent();
+  renderCurrentWaypoint();
+}
+
+function scheduleRandomEvent() {
+  clearTimeout(eventTimer);
+  const delay = 60000 + Math.random() * 60000;
+  eventTimer = setTimeout(() => {
+    const ev = window.gameData.events[Math.floor(Math.random() * window.gameData.events.length)];
+    showFreeze(ev);
+    scheduleRandomEvent();
+  }, delay);
+}
+
+function showFreeze(ev) {
+  const overlay = document.getElementById('freezeOverlay');
+  document.getElementById('freezeText').innerText = '⚠️ ' + ev.text;
+  overlay.classList.remove('hidden');
+  let left = ev.effectSeconds;
+  document.getElementById('freezeCountdown').innerText = left + ' שניות';
+  const tick = setInterval(() => {
+    left -= 1;
+    if (left <= 0) { clearInterval(tick); overlay.classList.add('hidden'); return; }
+    document.getElementById('freezeCountdown').innerText = left + ' שניות';
+  }, 1000);
+}
+
+function renderCurrentWaypoint() {
+  clearInterval(quizTimer);
+  document.getElementById('checkpointCard').classList.add('hidden');
+  document.getElementById('quizCard').classList.add('hidden');
+  document.getElementById('finishCard').classList.add('hidden');
+  document.getElementById('scoreBadge').innerText = '⭐ ' + state.score + ' נק\'';
+
+  const total = Object.keys(window.gameData.waypoints).length;
+  if (state.pos >= total) {
+    clearTimeout(eventTimer);
+    document.getElementById('finishCard').classList.remove('hidden');
+    document.getElementById('finishScore').innerText = 'ניקוד סופי: ' + state.score;
+    const mistakesList = document.getElementById('mistakesList');
+    if (state.mistakes.length === 0) {
+      document.getElementById('mistakesBox').classList.add('hidden');
+    } else {
+      mistakesList.innerHTML = state.mistakes.map(m => `<li><b>${m.title}</b>: ${m.correctText}</li>`).join('');
+    }
+    return;
+  }
+
+  document.getElementById('progressText').innerText = 'תחנה ' + state.pos + ' מתוך ' + total;
+  const target = state.pos + 1;
+  const w = window.gameData.waypoints[target];
+  if (!w) return;
+
+  if (w.type === 'checkpoint') {
+    document.getElementById('checkpointCard').classList.remove('hidden');
+    document.getElementById('checkpointInfo').innerText = w.info;
+  } else {
+    answered = false;
+    document.getElementById('quizCard').classList.remove('hidden');
+    document.getElementById('quizQuestion').innerText = w.question;
+    document.getElementById('explainBox').classList.add('hidden');
+    document.getElementById('nextBtn').classList.add('hidden');
+    const list = document.getElementById('optionsList');
+    list.innerHTML = '';
+    w.options.forEach((opt, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'opt';
+      btn.innerText = opt;
+      btn.onclick = () => submitAnswer(idx, w, target);
+      list.appendChild(btn);
+    });
+    answerShownAt = Date.now();
+    let t = 20;
+    document.getElementById('timeBar').style.width = '100%';
+    quizTimer = setInterval(() => {
+      t -= 0.1;
+      document.getElementById('timeBar').style.width = Math.max(0, (t / 20) * 100) + '%';
+      if (t <= 0) { clearInterval(quizTimer); if (!answered) submitAnswer(-1, w, target); }
+    }, 100);
+  }
+}
+
+function advanceCheckpoint() {
+  state.pos = state.pos + 1;
+  save(state);
+  renderCurrentWaypoint();
+}
+
+function submitAnswer(idx, w, target) {
+  if (answered) return;
+  answered = true;
+  clearInterval(quizTimer);
+  const correct = idx === w.correct;
+  const elapsed = answerShownAt ? (Date.now() - answerShownAt) / 1000 : 20;
+  const bonus = correct ? Math.max(40, 100 - Math.round(elapsed * 4)) : 0;
+
+  const opts = document.querySelectorAll('.opt');
+  opts.forEach((btn, i) => {
+    btn.disabled = true;
+    if (i === w.correct) btn.classList.add('correct');
+    else if (i === idx) btn.classList.add('wrong');
+  });
+  document.getElementById('explainBox').classList.remove('hidden');
+  document.getElementById('explainBox').innerText = (correct ? '✅ נכון! ' : '❌ ') + w.explanation;
+  document.getElementById('nextBtn').classList.remove('hidden');
+
+  if (!correct) {
+    state.mistakes.push({ title: w.title, correctText: w.options[w.correct] });
+  }
+  state.score += bonus;
+  state.pos = target;
+  save(state);
+}
+
+function resetSolo() {
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+</script>
+</body>
+</html>
