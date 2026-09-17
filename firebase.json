@@ -1,0 +1,5 @@
+{
+  "database": [
+    { "instance": "erez-piramida-game-default-rtdb", "rules": "database.rules.json" }
+  ]
+}
